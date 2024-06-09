@@ -28,6 +28,7 @@ async function run() {
 
     const surveyCollection = client.db("Pro-Survey").collection("survey");
     const userCollection = client.db("Pro-Survey").collection("users");
+    const SurveyResponses = client.db('Pro-Survey').collection("surveyId")
 
     // User Related Api
     app.post("/users", async (req, res) => {
@@ -43,10 +44,41 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/survey", async (req, res) => {
-      const result = await surveyCollection.find().toArray();
-      res.send(result);
-    });
+   // Survey creation API
+
+   app.post('/create', async(req,res)=>{
+    const createdSurvey = req.body
+    const result = await surveyCollection.insertOne(createdSurvey)
+    res.send(result)
+   })
+ 
+
+    // Route to update a survey
+  
+    
+
+
+
+
+    
+
+
+    
+app.get("/api/survey/survey", async (req, res) => {
+  try {
+    const surveys = await surveyCollection.find().toArray();
+    res.status(200).json(surveys);
+  } catch (error) {
+    console.error("Error fetching surveys:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
+    
+
+
+
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
