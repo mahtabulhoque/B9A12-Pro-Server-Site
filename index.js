@@ -28,21 +28,45 @@ async function run() {
 
     const surveyCollection = client.db("Pro-Survey").collection("survey");
     const userCollection = client.db("Pro-Survey").collection("users");
-    const SurveyResponses = client.db('Pro-Survey').collection("surveyId")
+   
 
     // User Related Api
-    app.post("/users", async (req, res) => {
+    app.put("/users", async (req, res) => {
       const user = req.body;
-      console.log("Received user info:", user);
-      const query = { email: user.email };
-      const existingUser = await userCollection.findOne(query);
-      if (existingUser) {
-        return res.send({ message: "user already exist", insertedId: null });
+      const isExist = userCollection.findOne({email: user?.email})
+      if(isExist) return res.send(isExist)
+
+
+
+      const options = {upsert:true}
+      const query = { email: user?.email };
+      const updateDoc = {
+        $set:{
+
+          ...user,
+          timestamp:Date.now(),
+        },
       }
-      const result = await userCollection.insertOne(user);
-      console.log("User inserted:", result);
-      res.send(result);
-    });
+      const result = await userCollection.updateOne(query,updateDoc,options)
+      res.send(result)
+
+   })
+
+  //  get a user by email
+
+  app.get('/user/:email', async (req,res)=>{
+    const email = req.params.email
+    const result = await userCollection.findOne({email})
+    res.send(result)
+  })
+
+
+  //  get all users from db
+
+  app.get('/users', async (req,res)=>{
+    const result = await userCollection.find().toArray()
+    res.send(result)
+  })
 
    // Survey creation API
 
