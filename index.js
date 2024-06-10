@@ -31,26 +31,28 @@ async function run() {
    
 
     // User Related Api
-    app.put("/users", async (req, res) => {
+    app.put("/user", async (req, res) => {
       const user = req.body;
-      const isExist = userCollection.findOne({email: user?.email})
-      if(isExist) return res.send(isExist)
-
-
-
-      const options = {upsert:true}
-      const query = { email: user?.email };
-      const updateDoc = {
-        $set:{
-
-          ...user,
-          timestamp:Date.now(),
-        },
+      try {
+        const isExist = await userCollection.findOne({ email: user?.email });
+        if (isExist) return res.send(isExist);
+    
+        const options = { upsert: true };
+        const query = { email: user?.email };
+        const updateDoc = {
+          $set: {
+            ...user,
+            timestamp: Date.now(),
+          },
+        };
+    
+        const result = await userCollection.updateOne(query, updateDoc, options);
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating user:", error);
+        res.status(500).send({ error: "Failed to update user" });
       }
-      const result = await userCollection.updateOne(query,updateDoc,options)
-      res.send(result)
-
-   })
+    });
 
   //  get a user by email
 
@@ -67,6 +69,32 @@ async function run() {
     const result = await userCollection.find().toArray()
     res.send(result)
   })
+
+
+    // update user role
+
+    app.patch('/users/update/:email', async (req, res) => {
+      const email = req.params.email;
+      const user = req.body;
+      const query = { email };
+      const updateDoc = {
+        $set: { ...user, timestamp: new Date() },
+      };
+      
+      try {
+        const result = await userCollection.updateOne(query, updateDoc);
+        if (result.modifiedCount > 0) {
+          res.send({ success: true, message: 'User role updated successfully' });
+        } else {
+          res.status(404).send({ success: false, message: 'User not found' });
+        }
+      } catch (error) {
+        res.status(500).send({ success: false, message: 'Error updating user role', error });
+      }
+    });
+    
+
+
 
    // Survey creation API
 
@@ -97,6 +125,12 @@ app.get("/api/survey/survey", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+// Get all survey
+   app.get('/survey', async(req, res)=>{
+    const result = await surveyCollection.find().toArray()
+    res.send(result)
+   })
 
 
     
