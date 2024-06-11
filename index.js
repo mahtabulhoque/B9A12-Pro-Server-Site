@@ -9,7 +9,7 @@ app.use(cors());
 app.use(express.json());
 
 // Mongodb
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.i8q8q4e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -131,6 +131,30 @@ app.get("/api/survey/survey", async (req, res) => {
     const result = await surveyCollection.find().toArray()
     res.send(result)
    })
+
+
+  //  Geta a survey by Id
+
+  app.get('/survey/:id', async (req, res) => {
+    const id = req.params.id;
+  
+    // Check if the ID is a valid 24-character hexadecimal string
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ error: 'Invalid survey ID format' });
+    }
+  
+    const query = { _id: new ObjectId(id) };
+    
+    try {
+      const result = await surveyCollection.findOne(query);
+      if (!result) {
+        return res.status(404).send({ error: 'Survey not found' });
+      }
+      res.send(result);
+    } catch (error) {
+      res.status(500).send({ error: 'An error occurred while retrieving the survey' });
+    }
+  });
 
 
     
