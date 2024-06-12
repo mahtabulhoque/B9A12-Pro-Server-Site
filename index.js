@@ -5,7 +5,15 @@ require("dotenv").config();
 const port = process.env.PORT || 5000;
 
 // middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173"
+      
+    ],
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Mongodb
@@ -28,7 +36,7 @@ async function run() {
 
     const surveyCollection = client.db("Pro-Survey").collection("survey");
     const userCollection = client.db("Pro-Survey").collection("users");
-   
+    const votesCollection = client.db("Pro-Survey").collection("vote")
 
     // User Related Api
     app.put("/user", async (req, res) => {
@@ -116,24 +124,41 @@ async function run() {
 
 
     
-app.get("/api/survey/survey", async (req, res) => {
+// app.get("/api/survey/survey", async (req, res) => {
+//   try {
+//     const surveys = await surveyCollection.find().toArray();
+//     res.status(200).json(surveys);
+//   } catch (error) {
+//     console.error("Error fetching surveys:", error);
+//     res.status(500).json({ error: "Internal Server Error" });
+//   }
+// });
+
+// Get all survey
+app.get('/survey', async (req, res) => {
+  const filterType = req.query.filterType;
+  
   try {
-    const surveys = await surveyCollection.find().toArray();
-    res.status(200).json(surveys);
+    let result;
+    if (filterType === 'mostVoted') {
+      // Find and sort surveys by voteCount in descending order and limit to 6
+      result = await surveyCollection.find().sort({ voteCount: -1 }).limit(6).toArray();
+    } else if (filterType === 'latest') {
+      // Find and sort surveys by creation timestamp in descending order and limit to 6
+      result = await surveyCollection.find().sort({ timestamp: -1 }).limit(6).toArray();
+    } else {
+      return res.status(400).json({ error: 'Invalid filter type' });
+    }
+    
+    res.send(result);
   } catch (error) {
     console.error("Error fetching surveys:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-// Get all survey
-   app.get('/survey', async(req, res)=>{
-    const result = await surveyCollection.find().toArray()
-    res.send(result)
-   })
 
-
-  //  Geta a survey by Id
+  //  Get a survey by Id
 
   app.get('/survey/:id', async (req, res) => {
     const id = req.params.id;
@@ -156,6 +181,47 @@ app.get("/api/survey/survey", async (req, res) => {
     }
   });
 
+  // get survey by email
+
+  app.get('/surveyor/:email', async (req, res) => {
+    const email = req.params.email;
+    const query = { userEmail: email };
+    try {
+      const viewSurvey = await surveyCollection.find(query).toArray();
+      res.send(viewSurvey);  // Sending the response back to the client
+    } catch (error) {
+      res.status(500).send({ message: 'An error occurred while fetching surveys', error: error.message });
+    }
+  });
+  
+  
+
+
+   // for vote survey
+   app.post('/votes', async (req, res) => {
+    try {
+      const voteSurvey = req.body;
+      const voteId = voteSurvey.voteId;
+      
+      // Insert the voteSurvey data into votesCollection
+      const result = await votesCollection.insertOne(voteSurvey);
+  
+      // Update the voteCount in surveyCollection
+      const voteQuery = { _id: new ObjectId(voteId) };
+      const updateDoc = {
+        $inc: { voteCount: 1 }, // Increment voteCount by 1
+      };
+      const updateVoteCount = await surveyCollection.updateOne(voteQuery, updateDoc);
+  
+      // Send the result back to the client
+      res.send(result);
+    } catch (error) {
+      // Handle errors
+      console.error(error);
+      res.status(500).send('Internal Server Error');
+    }
+  });
+  
 
     
 
