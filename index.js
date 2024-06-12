@@ -32,7 +32,17 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
+
+    // verify Admin middleware
+
+    const verifyAdmin = async (req,res,next)=>{
+      const user = req.user
+      const query = {email:user?.email}
+      const result = await userCollection.findOne(query)
+      if(!result || result?. role !== 'Admin')
+        return res.status(401).send({message:'forbidden access'})
+    }
 
     const surveyCollection = client.db("Pro-Survey").collection("survey");
     const userCollection = client.db("Pro-Survey").collection("users");
@@ -113,7 +123,7 @@ async function run() {
    })
  
 
-    // Route to update a survey
+ 
   
     
 
@@ -124,30 +134,22 @@ async function run() {
 
 
     
-// app.get("/api/survey/survey", async (req, res) => {
-//   try {
-//     const surveys = await surveyCollection.find().toArray();
-//     res.status(200).json(surveys);
-//   } catch (error) {
-//     console.error("Error fetching surveys:", error);
-//     res.status(500).json({ error: "Internal Server Error" });
-//   }
-// });
 
 // Get all survey
 app.get('/survey', async (req, res) => {
   const filterType = req.query.filterType;
-  
+
   try {
     let result;
     if (filterType === 'mostVoted') {
-      // Find and sort surveys by voteCount in descending order and limit to 6
-      result = await surveyCollection.find().sort({ voteCount: -1 }).limit(6).toArray();
+      // Find and sort surveys by voteCount in descending order 
+      result = await surveyCollection.find().sort({ voteCount: -1 }).toArray();
     } else if (filterType === 'latest') {
-      // Find and sort surveys by creation timestamp in descending order and limit to 6
-      result = await surveyCollection.find().sort({ timestamp: -1 }).limit(6).toArray();
+      // Find and sort surveys by creation timestamp in descending order
+      result = await surveyCollection.find().sort({ timestamp: -1 }).toArray();
     } else {
-      return res.status(400).json({ error: 'Invalid filter type' });
+      // Fetch all surveys if no filterType or invalid filterType is provided
+      result = await surveyCollection.find().toArray();
     }
     
     res.send(result);
@@ -156,6 +158,7 @@ app.get('/survey', async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
 
 
   //  Get a survey by Id
@@ -183,16 +186,36 @@ app.get('/survey', async (req, res) => {
 
   // get survey by email
 
-  app.get('/surveyor/:email', async (req, res) => {
-    const email = req.params.email;
-    const query = { userEmail: email };
+  app.get('/surveys/:email', async (req, res) => {
     try {
+      const email = req.params.email;
+      
+      const query = { surveyor_email: email }; // Use the email parameter from the request
       const viewSurvey = await surveyCollection.find(query).toArray();
-      res.send(viewSurvey);  // Sending the response back to the client
+      res.send(viewSurvey); 
     } catch (error) {
       res.status(500).send({ message: 'An error occurred while fetching surveys', error: error.message });
     }
   });
+
+
+  // update a survey
+
+  app.put('/update/:id', async (req, res)=>{
+    const id = req.params.id;
+    const updateData= req.body;
+    const result = await surveyCollection.updateOne(
+      {
+        _id:new ObjectId(id)
+      },
+      {$set: updateData},
+      {upsert:true}
+    );
+    res.send(result);
+  })
+  
+  
+  
   
   
 
