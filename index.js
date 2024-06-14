@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const port = process.env.PORT || 5000;
 
@@ -46,7 +46,8 @@ async function run() {
     const surveyCollection = client.db("Pro-Survey").collection("survey");
     const userCollection = client.db("Pro-Survey").collection("users");
     const votesCollection = client.db("Pro-Survey").collection("vote");
-    const paymentCollection = client.db('Pro-Survey').collection('payment')
+    const paymentCollection = client.db("Pro-Survey").collection("payment");
+    const questionCollections = client.db("Pro-Survey").collection("question");
 
     // User Related Api
     app.put("/user", async (req, res) => {
@@ -126,6 +127,58 @@ async function run() {
       res.send(result);
     });
 
+    // Fetch questions by survey ID
+app.get("/survey/:id/questions", async (req, res) => {
+  const surveyId = req.params.id;
+
+  try {
+    const survey = await surveyCollection.findOne(
+      { _id: new ObjectId(surveyId) },
+      { projection: { questions: 1 } }
+    );
+
+    if (!survey) {
+      return res.status(404).json({ error: "Survey not found" });
+    }
+
+    res.json(survey.questions || []);
+  } catch (error) {
+    console.error("Error fetching survey questions:", error);
+    res.status(500).json({ error: "Failed to fetch survey questions" });
+  }
+});
+
+// Create a new survey
+app.post("/create", async (req, res) => {
+  const formData = req.body; // Extract all form data
+  try {
+    const result = await surveyCollection.insertOne(formData);
+    res.status(201).json(result);
+  } catch (error) {
+    console.error("Error creating survey:", error);
+    res.status(500).json({ error: "Failed to create survey" });
+  }
+});
+
+// Submit survey answers
+app.post('/api/submit-survey', async (req, res) => {
+  const { answers, surveyId } = req.body;
+  try {
+    const survey = await surveyCollection.findOne({ _id: new ObjectId(surveyId) });
+    if (!survey) {
+      return res.status(404).send({ message: "Survey not found" });
+    }
+    const updatedSurvey = await surveyCollection.updateOne(
+      { _id: new ObjectId(surveyId) },
+      { $push: { answers: { $each: answers } } }
+    );
+    res.status(200).send("Survey submitted successfully");
+  } catch (error) {
+    console.error("Error submitting survey answers:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
     // Get all survey
     app.get("/survey", async (req, res) => {
       const filterType = req.query.filterType;
@@ -153,32 +206,30 @@ async function run() {
       }
     });
 
-
     // filter survey
 
-    app.get('/surveys', async (req, res) => {
+    app.get("/surveys", async (req, res) => {
       const filter = req.query.filter;
-      const sort = req.query.sort
+      const sort = req.query.sort;
       let query = {};
       if (filter) {
-        query = { ...query, category: filter }
+        query = { ...query, category: filter };
       }
       let options = {};
       if (sort) {
-        options = { sort: { voteCount: sort === "asc" ? 1 : -1 } }
+        options = { sort: { voteCount: sort === "asc" ? 1 : -1 } };
       }
-      const result = await surveyCollection.find(query, options).toArray()
-      res.send(result)
-    })
+      const result = await surveyCollection.find(query, options).toArray();
+      res.send(result);
+    });
 
-    app.post('/api/submit-survey', async (req, res) => {
+    app.post("/api/submit-survey", async (req, res) => {
       const surveyAnswers = req.body;
       // Process and store the survey answers in the database if necessary
       // For this example, we simply log them
       console.log("Received survey answers:", surveyAnswers);
       res.status(200).send("Survey submitted successfully");
     });
-  
 
     //  Get a survey by Id
 
@@ -261,43 +312,41 @@ async function run() {
     });
 
     // payment related API
-    app.post('/create-payment-intent', async (req, res) => {
+    app.post("/create-payment-intent", async (req, res) => {
       const { price } = req.body;
       const amount = parseInt(price * 100); // Convert to cents or smallest currency unit
-    
+
       try {
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amount,
-          currency: 'usd',
-          payment_method_types: ['card'],
+          currency: "usd",
+          payment_method_types: ["card"],
         });
-    
+
         res.send({
           clientSecret: paymentIntent.client_secret,
         });
       } catch (error) {
-        console.error('Error creating payment intent:', error);
-        res.status(500).json({ error: 'Failed to create payment intent' });
+        console.error("Error creating payment intent:", error);
+        res.status(500).json({ error: "Failed to create payment intent" });
       }
     });
 
-    app.get('/payments', async (req, res) => {
+    app.get("/payments", async (req, res) => {
       const result = await paymentCollection.find().toArray();
-      res.send(result)
+      res.send(result);
+    });
 
-    })
-
-    app.get('/payments/:email', async (req, res) => {
+    app.get("/payments/:email", async (req, res) => {
       const query = { email: req.params.email };
       if (req.params.email !== req.decoded.email) {
-        return res.status(403).send({ message: "forbidden access" })
+        return res.status(403).send({ message: "forbidden access" });
       }
       const result = await paymentCollection.find(query).toArray();
-      res.send(result)
-    })
+      res.send(result);
+    });
 
-
-    app.post('/payments', async (req, res) => {
+    app.post("/payments", async (req, res) => {
       const payment = req.body;
 
       try {
@@ -306,19 +355,16 @@ async function run() {
         const userUpdateResult = await userCollection.updateOne(
           { email: payment?.email },
           {
-            $set: { role: 'Pro-user' }
+            $set: { role: "Pro-user" },
           }
         );
 
         res.send({ paymentResult, userUpdateResult });
       } catch (error) {
-        console.error('Error processing payment:', error);
-        res.status(500).send({ message: 'Internal server error' });
+        console.error("Error processing payment:", error);
+        res.status(500).send({ message: "Internal server error" });
       }
     });
-
-
-
 
     await client.db("admin").command({ ping: 1 });
     console.log(
