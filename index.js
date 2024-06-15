@@ -1,7 +1,8 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
-const jwt = require('jsonwebtoken')
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 require("dotenv").config();
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -15,6 +16,7 @@ app.use(
   })
 );
 app.use(express.json());
+app.use(cookieParser());
 
 // Mongodb
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -52,26 +54,37 @@ async function run() {
     const commentCollection = client.db('Pro-Survey').collection('comments')
     const reportCollection = client.db('Pro-Survey').collection('reports')
     
+// Jwt Middleware
+app.post('/jwt', async (req, res) => {
+  const user = req.body;
+  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+    expiresIn: '365d'
+  });
+  res.send({ token });
+});
 
-    // Jwt Middleware
-    app.post('/jwt', async(req,res)=>{
-      const user = req.body;
-      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET,{
-        expiresIn:'365d'
-      });
-      res.send({token});
-    })
+const verifyToken = (req, res, next) => {
+  const token = req.cookies.token || req.headers['authorization'];
 
+  if (!token) {
+    return res.status(401).json({ error: 'Access denied. No token provided.' });
+  }
 
-    const verifyToken = (req,res,next)=>{
-      console.log('inside token', req.headers);
-    }
+  try {
+    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(400).json({ error: 'Invalid token.' });
+  }
+};
+
     
     
     
     
     // User Related Api
-    app.put("/user",verifyToken, async (req, res) => {
+    app.put("/user", async (req, res) => {
       
       const user = req.body;
       try {
@@ -101,7 +114,7 @@ async function run() {
 
     //  get a user by email
 
-    app.get("/user/:email",verifyToken, async (req, res) => {
+    app.get("/user/:email", async (req, res) => {
       const email = req.params.email;
       const result = await userCollection.findOne({ email });
       res.send(result);
@@ -117,7 +130,7 @@ async function run() {
 
     // update user role
 
-    app.patch("/users/update/:email",verifyToken, async (req, res) => {
+    app.patch("/users/update/:email", async (req, res) => {
       const email = req.params.email;
       const user = req.body;
       const query = { email };
@@ -144,14 +157,14 @@ async function run() {
 
     // Survey creation API
 
-    app.post("/create",verifyToken, async (req, res) => {
+    app.post("/create", async (req, res) => {
       const createdSurvey = req.body;
       const result = await surveyCollection.insertOne(createdSurvey);
       res.send(result);
     });
 
     // Fetch questions by survey ID
-app.get("/survey/:id/questions", verifyToken, async (req, res) => {
+app.get("/survey/:id/questions", async (req, res) => {
   const surveyId = req.params.id;
 
   try {
@@ -172,7 +185,7 @@ app.get("/survey/:id/questions", verifyToken, async (req, res) => {
 });
 
 // Create a new survey
-app.post("/create",verifyToken, async (req, res) => {
+app.post("/create", async (req, res) => {
   const formData = req.body; // Extract all form data
   try {
     const result = await surveyCollection.insertOne(formData);
@@ -184,7 +197,7 @@ app.post("/create",verifyToken, async (req, res) => {
 });
 
 // Submit survey answers
-app.post('/api/submit-survey',verifyToken, async (req, res) => {
+app.post('/api/submit-survey', async (req, res) => {
   const { answers, surveyId } = req.body;
   try {
     const survey = await surveyCollection.findOne({ _id: new ObjectId(surveyId) });
@@ -204,7 +217,7 @@ app.post('/api/submit-survey',verifyToken, async (req, res) => {
 
 // comment
 
-app.post("/survey/:id/comment",verifyToken, async (req, res) => {
+app.post("/survey/:id/comment", async (req, res) => {
   const surveyId = req.params.id;
   const { comment, userEmail } = req.body; // Include userEmail in the request body
 
@@ -223,7 +236,7 @@ app.post("/survey/:id/comment",verifyToken, async (req, res) => {
   }
 });
 
-app.get("/survey/:id/comments/:userEmail",verifyToken, async (req, res) => {
+app.get("/survey/:id/comments/:userEmail", async (req, res) => {
   const surveyId = req.params.id;
   const userEmail = req.params.userEmail;
 
@@ -260,7 +273,7 @@ app.post("/survey/:id/report", async (req, res) => {
   }
 });
 
-app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
+app.get("/survey/:id/report/:userEmail", async (req, res) => {
   const surveyId = req.params.id;
   const userEmail = req.params.userEmail;
 
@@ -280,7 +293,7 @@ app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
 
 
     // Get all survey
-    app.get("/survey",verifyToken, async (req, res) => {
+    app.get("/survey", async (req, res) => {
       const filterType = req.query.filterType;
 
       try {
@@ -307,7 +320,7 @@ app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
     });
 
 
-    app.get("/surveys",verifyToken, async (req, res) => {
+    app.get("/surveys", async (req, res) => {
       const result = await surveyCollection.find().toArray()
       res.send(result);
     })
@@ -328,7 +341,7 @@ app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
 
     // filter survey
 
-    app.get("/surveys",verifyToken, async (req, res) => {
+    app.get("/surveys", async (req, res) => {
       const filter = req.query.filter;
       const sort = req.query.sort;
       let query = {};
@@ -343,7 +356,7 @@ app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
       res.send(result);
     });
 
-    app.post("/api/submit-survey",verifyToken, async (req, res) => {
+    app.post("/api/submit-survey", async (req, res) => {
       const surveyAnswers = req.body;
       // Process and store the survey answers in the database if necessary
       // For this example, we simply log them
@@ -353,7 +366,7 @@ app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
 
     //  Get a survey by Id
 
-    app.get("/survey/:id",verifyToken, async (req, res) => {
+    app.get("/survey/:id", async (req, res) => {
       const id = req.params.id;
 
       if (!ObjectId.isValid(id)) {
@@ -377,7 +390,7 @@ app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
 
     // get survey by email
 
-    app.get("/surveys/:email",verifyToken, async (req, res) => {
+    app.get("/surveys/:email", async (req, res) => {
       try {
         const email = req.params.email;
 
@@ -394,7 +407,7 @@ app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
 
     // update a survey
 
-    app.put("/update/:id",verifyToken,verifyAdmin, async (req, res) => {
+    app.put("/update/:id",verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const updateData = req.body;
       const result = await surveyCollection.updateOne(
@@ -442,7 +455,7 @@ app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
     
 
     // payment related API
-    app.post("/create-payment-intent",verifyToken, async (req, res) => {
+    app.post("/create-payment-intent", async (req, res) => {
       const { price } = req.body;
       const amount = parseInt(price * 100); // Convert to cents or smallest currency unit
 
@@ -467,7 +480,7 @@ app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
 
 
 // all payment & response
-    app.get("/payments",verifyToken,verifyAdmin, async (req, res) => {
+    app.get("/payments",verifyAdmin, async (req, res) => {
       const result = await paymentCollection.find().toArray();
       res.send(result);
     });
@@ -481,7 +494,7 @@ app.get("/survey/:id/report/:userEmail",verifyToken, async (req, res) => {
 
 
 
-    app.post("/payments",verifyToken,verifyAdmin, async (req, res) => {
+    app.post("/payments",verifyAdmin, async (req, res) => {
       const payment = req.body;
 
       try {
