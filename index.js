@@ -48,7 +48,8 @@ async function run() {
     const votesCollection = client.db("Pro-Survey").collection("vote");
     const paymentCollection = client.db("Pro-Survey").collection("payment");
     const questionCollections = client.db("Pro-Survey").collection("question");
-
+    const commentCollection = client.db('Pro-Survey').collection('comments')
+    const reportCollection = client.db('Pro-Survey').collection('reports')
     // User Related Api
     app.put("/user", async (req, res) => {
       const user = req.body;
@@ -178,6 +179,83 @@ app.post('/api/submit-survey', async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
+// comment
+
+app.post("/survey/:id/comment", async (req, res) => {
+  const surveyId = req.params.id;
+  const { comment, userEmail } = req.body; // Include userEmail in the request body
+
+  try {
+    const result = await commentCollection.insertOne({
+      surveyId: new ObjectId(surveyId),
+      comment,
+      userEmail, // Store userEmail along with the comment
+      timestamp: new Date(),
+    });
+
+    res.status(201).send(result);
+  } catch (error) {
+    console.error('Error posting comment:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+app.get("/survey/:id/comments/:userEmail", async (req, res) => {
+  const surveyId = req.params.id;
+  const userEmail = req.params.userEmail;
+
+  try {
+    const comments = await commentCollection.find({
+      surveyId: new ObjectId(surveyId),
+      userEmail, // Filter comments by userEmail
+    }).toArray();
+
+    res.status(200).send(comments);
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+// REport
+
+app.post("/survey/:id/report", async (req, res) => {
+  const surveyId = req.params.id;
+  const { report, userEmail } = req.body; // Include userEmail in the request body
+
+  try {
+    const result = await reportCollection.insertOne({
+      surveyId: new ObjectId(surveyId),
+      report,
+      userEmail, // Store userEmail along with the comment
+      timestamp: new Date(),
+    });
+
+    res.status(201).send(result);
+  } catch (error) {
+    console.error('Error posting report:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+app.get("/survey/:id/report/:userEmail", async (req, res) => {
+  const surveyId = req.params.id;
+  const userEmail = req.params.userEmail;
+
+  try {
+    const report = await reportCollection.find({
+      surveyId: new ObjectId(surveyId),
+      userEmail, // Filter comments by userEmail
+    }).toArray();
+
+    res.status(200).send(report);
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+
 
     // Get all survey
     app.get("/survey", async (req, res) => {
