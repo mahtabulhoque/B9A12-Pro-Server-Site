@@ -1,8 +1,8 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
-const jwt = require('jsonwebtoken');
-const cookieParser = require('cookie-parser');
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
 require("dotenv").config();
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -11,12 +11,17 @@ const port = process.env.PORT || 5000;
 // middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173"],
-    credentials: true,
+    origin: [
+      "http://localhost:5173",
+      "https://b9a12-assignment-project.web.app",
+      "https://b9a12-assignment-project.firebaseapp.com",
+    ],
   })
 );
 app.use(express.json());
 app.use(cookieParser());
+
+
 
 // Mongodb
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -30,6 +35,12 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   },
 });
+
+const cookieOption = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production" ? true : false,
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+};
 
 async function run() {
   try {
@@ -51,41 +62,50 @@ async function run() {
     const votesCollection = client.db("Pro-Survey").collection("vote");
     const paymentCollection = client.db("Pro-Survey").collection("payment");
     const questionCollections = client.db("Pro-Survey").collection("question");
-    const commentCollection = client.db('Pro-Survey').collection('comments')
-    const reportCollection = client.db('Pro-Survey').collection('reports')
-    
-// Jwt Middleware
-app.post('/jwt', async (req, res) => {
-  const user = req.body;
-  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
-    expiresIn: '365d'
-  });
-  res.send({ token });
-});
+    const commentCollection = client.db("Pro-Survey").collection("comments");
+    const reportCollection = client.db("Pro-Survey").collection("reports");
 
-const verifyToken = (req, res, next) => {
-  const token = req.cookies.token || req.headers['authorization'];
+    // Jwt Middleware
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "365d",
+      });
+      res.send(token, cookieOption);
+    });
 
-  if (!token) {
-    return res.status(401).json({ error: 'Access denied. No token provided.' });
-  }
+    const verifyToken = (req, res, next) => {
+      const token = req.cookies.token || req.headers["authorization"];
 
-  try {
-    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    res.status(400).json({ error: 'Invalid token.' });
-  }
-};
+      if (!token) {
+        return res
+          .status(401)
+          .json({ error: "Access denied. No token provided." });
+      }
 
-    
-    
-    
-    
+      try {
+        const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+        req.user = decoded;
+        next();
+      } catch (err) {
+        res.status(400).json({ error: "Invalid token." });
+      }
+    };
+
+    app.get("/logout", (req, res) => {
+      const user = req.body;
+      console.log(user);
+
+      res
+        .clearCookie("token", {
+          ...cookieOption,
+          maxAge: 0,
+        })
+        .send({ success: true });
+    });
+
     // User Related Api
     app.put("/user", async (req, res) => {
-      
       const user = req.body;
       try {
         const isExist = await userCollection.findOne({ email: user?.email });
@@ -123,7 +143,6 @@ const verifyToken = (req, res, next) => {
     //  get all users from db
 
     app.get("/users", async (req, res) => {
-   
       const result = await userCollection.find().toArray();
       res.send(result);
     });
@@ -164,133 +183,137 @@ const verifyToken = (req, res, next) => {
     });
 
     // Fetch questions by survey ID
-app.get("/survey/:id/questions", async (req, res) => {
-  const surveyId = req.params.id;
+    app.get("/survey/:id/questions", async (req, res) => {
+      const surveyId = req.params.id;
 
-  try {
-    const survey = await surveyCollection.findOne(
-      { _id: new ObjectId(surveyId) },
-      { projection: { questions: 1 } }
-    );
+      try {
+        const survey = await surveyCollection.findOne(
+          { _id: new ObjectId(surveyId) },
+          { projection: { questions: 1 } }
+        );
 
-    if (!survey) {
-      return res.status(404).json({ error: "Survey not found" });
-    }
+        if (!survey) {
+          return res.status(404).json({ error: "Survey not found" });
+        }
 
-    res.json(survey.questions || []);
-  } catch (error) {
-    console.error("Error fetching survey questions:", error);
-    res.status(500).json({ error: "Failed to fetch survey questions" });
-  }
-});
-
-// Create a new survey
-app.post("/create", async (req, res) => {
-  const formData = req.body; // Extract all form data
-  try {
-    const result = await surveyCollection.insertOne(formData);
-    res.status(201).json(result);
-  } catch (error) {
-    console.error("Error creating survey:", error);
-    res.status(500).json({ error: "Failed to create survey" });
-  }
-});
-
-// Submit survey answers
-app.post('/api/submit-survey', async (req, res) => {
-  const { answers, surveyId } = req.body;
-  try {
-    const survey = await surveyCollection.findOne({ _id: new ObjectId(surveyId) });
-    if (!survey) {
-      return res.status(404).send({ message: "Survey not found" });
-    }
-    const updatedSurvey = await surveyCollection.updateOne(
-      { _id: new ObjectId(surveyId) },
-      { $push: { answers: { $each: answers } } }
-    );
-    res.status(200).send("Survey submitted successfully");
-  } catch (error) {
-    console.error("Error submitting survey answers:", error);
-    res.status(500).send("Internal Server Error");
-  }
-});
-
-// comment
-
-app.post("/survey/:id/comment", async (req, res) => {
-  const surveyId = req.params.id;
-  const { comment, userEmail } = req.body; // Include userEmail in the request body
-
-  try {
-    const result = await commentCollection.insertOne({
-      surveyId: new ObjectId(surveyId),
-      comment,
-      userEmail, // Store userEmail along with the comment
-      timestamp: new Date(),
+        res.json(survey.questions || []);
+      } catch (error) {
+        console.error("Error fetching survey questions:", error);
+        res.status(500).json({ error: "Failed to fetch survey questions" });
+      }
     });
 
-    res.status(201).send(result);
-  } catch (error) {
-    console.error('Error posting comment:', error);
-    res.status(500).send('Internal Server Error');
-  }
-});
-
-app.get("/survey/:id/comments/:userEmail", async (req, res) => {
-  const surveyId = req.params.id;
-  const userEmail = req.params.userEmail;
-
-  try {
-    const comments = await commentCollection.find({
-      surveyId: new ObjectId(surveyId),
-      userEmail, // Filter comments by userEmail
-    }).toArray();
-
-    res.status(200).send(comments);
-  } catch (error) {
-    console.error('Error fetching comments:', error);
-    res.status(500).send('Internal Server Error');
-  }
-});
-// REport
-
-app.post("/survey/:id/report", async (req, res) => {
-  const surveyId = req.params.id;
-  const { report, userEmail } = req.body; // Include userEmail in the request body
-
-  try {
-    const result = await reportCollection.insertOne({
-      surveyId: new ObjectId(surveyId),
-      report,
-      userEmail, // Store userEmail along with the comment
-      timestamp: new Date(),
+    // Create a new survey
+    app.post("/create", async (req, res) => {
+      const formData = req.body; // Extract all form data
+      try {
+        const result = await surveyCollection.insertOne(formData);
+        res.status(201).json(result);
+      } catch (error) {
+        console.error("Error creating survey:", error);
+        res.status(500).json({ error: "Failed to create survey" });
+      }
     });
 
-    res.status(201).send(result);
-  } catch (error) {
-    console.error('Error posting report:', error);
-    res.status(500).send('Internal Server Error');
-  }
-});
+    // Submit survey answers
+    app.post("/api/submit-survey", async (req, res) => {
+      const { answers, surveyId } = req.body;
+      try {
+        const survey = await surveyCollection.findOne({
+          _id: new ObjectId(surveyId),
+        });
+        if (!survey) {
+          return res.status(404).send({ message: "Survey not found" });
+        }
+        const updatedSurvey = await surveyCollection.updateOne(
+          { _id: new ObjectId(surveyId) },
+          { $push: { answers: { $each: answers } } }
+        );
+        res.status(200).send("Survey submitted successfully");
+      } catch (error) {
+        console.error("Error submitting survey answers:", error);
+        res.status(500).send("Internal Server Error");
+      }
+    });
 
-app.get("/survey/:id/report/:userEmail", async (req, res) => {
-  const surveyId = req.params.id;
-  const userEmail = req.params.userEmail;
+    // comment
 
-  try {
-    const report = await reportCollection.find({
-      surveyId: new ObjectId(surveyId),
-      userEmail, // Filter comments by userEmail
-    }).toArray();
+    app.post("/survey/:id/comment", async (req, res) => {
+      const surveyId = req.params.id;
+      const { comment, userEmail } = req.body; // Include userEmail in the request body
 
-    res.status(200).send(report);
-  } catch (error) {
-    console.error('Error fetching comments:', error);
-    res.status(500).send('Internal Server Error');
-  }
-});
+      try {
+        const result = await commentCollection.insertOne({
+          surveyId: new ObjectId(surveyId),
+          comment,
+          userEmail, // Store userEmail along with the comment
+          timestamp: new Date(),
+        });
 
+        res.status(201).send(result);
+      } catch (error) {
+        console.error("Error posting comment:", error);
+        res.status(500).send("Internal Server Error");
+      }
+    });
 
+    app.get("/survey/:id/comments/:userEmail", async (req, res) => {
+      const surveyId = req.params.id;
+      const userEmail = req.params.userEmail;
+
+      try {
+        const comments = await commentCollection
+          .find({
+            surveyId: new ObjectId(surveyId),
+            userEmail, // Filter comments by userEmail
+          })
+          .toArray();
+
+        res.status(200).send(comments);
+      } catch (error) {
+        console.error("Error fetching comments:", error);
+        res.status(500).send("Internal Server Error");
+      }
+    });
+    // REport
+
+    app.post("/survey/:id/report", async (req, res) => {
+      const surveyId = req.params.id;
+      const { report, userEmail } = req.body; // Include userEmail in the request body
+
+      try {
+        const result = await reportCollection.insertOne({
+          surveyId: new ObjectId(surveyId),
+          report,
+          userEmail, // Store userEmail along with the comment
+          timestamp: new Date(),
+        });
+
+        res.status(201).send(result);
+      } catch (error) {
+        console.error("Error posting report:", error);
+        res.status(500).send("Internal Server Error");
+      }
+    });
+
+    app.get("/survey/:id/report/:userEmail", async (req, res) => {
+      const surveyId = req.params.id;
+      const userEmail = req.params.userEmail;
+
+      try {
+        const report = await reportCollection
+          .find({
+            surveyId: new ObjectId(surveyId),
+            userEmail, // Filter comments by userEmail
+          })
+          .toArray();
+
+        res.status(200).send(report);
+      } catch (error) {
+        console.error("Error fetching comments:", error);
+        res.status(500).send("Internal Server Error");
+      }
+    });
 
     // Get all survey
     app.get("/survey", async (req, res) => {
@@ -319,41 +342,45 @@ app.get("/survey/:id/report/:userEmail", async (req, res) => {
       }
     });
 
-
     app.get("/surveys", async (req, res) => {
-      const result = await surveyCollection.find().toArray()
+      const result = await surveyCollection.find().toArray();
       res.send(result);
-    })
-      
-    app.patch('/survey/update/:id', async (req, res) => {
+    });
+
+    app.patch("/survey/update/:id", async (req, res) => {
       const id = req.params.id;
       const statusInfo = req.body;
       const query = { _id: new ObjectId(id) };
       const updateDoc = {
-        $set: { ...statusInfo }
+        $set: { ...statusInfo },
       };
-      console.log(updateDoc)
+      console.log(updateDoc);
       const result = await surveyCollection.updateOne(query, updateDoc);
       res.send(result);
-    })
+    });
 
     
-
     // filter survey
-
     app.get("/surveys", async (req, res) => {
-      const filter = req.query.filter;
+      const filter = req.query.filter; 
       const sort = req.query.sort;
+    
       let query = {};
       if (filter) {
         query = { ...query, category: filter };
       }
       let options = {};
       if (sort) {
-        options = { sort: { voteCount: sort === "asc" ? 1 : -1 } };
+        options = { sort: { voteCount: sort === "asc" ? 1 : -1 } }; 
       }
-      const result = await surveyCollection.find(query, options).toArray();
-      res.send(result);
+    
+      try {
+        const result = await surveyCollection.find(query, options).toArray(); 
+        res.send(result); 
+      } catch (error) {
+        console.error("Error fetching surveys:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
     });
 
     app.post("/api/submit-survey", async (req, res) => {
@@ -407,7 +434,7 @@ app.get("/survey/:id/report/:userEmail", async (req, res) => {
 
     // update a survey
 
-    app.put("/update/:id",verifyAdmin, async (req, res) => {
+    app.put("/update/:id", async (req, res) => {
       const id = req.params.id;
       const updateData = req.body;
       const result = await surveyCollection.updateOne(
@@ -420,39 +447,32 @@ app.get("/survey/:id/report/:userEmail", async (req, res) => {
       res.send(result);
     });
 
-
-
-
     // for vote survey
     app.post("/votes", async (req, res) => {
       try {
         const voteSurvey = req.body;
         const voteId = voteSurvey.voteId;
-    
+
         // Insert the vote into votesCollection
         const result = await votesCollection.insertOne(voteSurvey);
-    
+
         // Update the voteCount in surveyCollection
         const voteQuery = { _id: new ObjectId(voteId) };
         const updateDoc = {
           $inc: { voteCount: 1 },
         };
-    
+
         await surveyCollection.updateOne(voteQuery, updateDoc);
-    
+
         // Fetch updated survey data if needed
         const updatedSurvey = await surveyCollection.findOne(voteQuery);
-    
-        res.status(200).json(updatedSurvey);  // Respond with updated survey data
-    
+
+        res.status(200).json(updatedSurvey); // Respond with updated survey data
       } catch (error) {
         console.error("Error processing vote:", error);
         res.status(500).send("Internal Server Error");
       }
     });
-
- 
-    
 
     // payment related API
     app.post("/create-payment-intent", async (req, res) => {
@@ -475,26 +495,18 @@ app.get("/survey/:id/report/:userEmail", async (req, res) => {
       }
     });
 
-    
-    
-
-
-// all payment & response
-    app.get("/payments",verifyAdmin, async (req, res) => {
+    // all payment & response
+    app.get("/payments",  async (req, res) => {
       const result = await paymentCollection.find().toArray();
       res.send(result);
     });
 
-
-    app.get("/votes",verifyAdmin, async (req, res) => {
+    app.get("/votes", verifyAdmin, async (req, res) => {
       const result = await votesCollection.find().toArray();
       res.send(result);
     });
 
-
-
-
-    app.post("/payments",verifyAdmin, async (req, res) => {
+    app.post("/payments",  async (req, res) => {
       const payment = req.body;
 
       try {
@@ -503,7 +515,7 @@ app.get("/survey/:id/report/:userEmail", async (req, res) => {
         const userUpdateResult = await userCollection.updateOne(
           { email: payment?.email },
           {
-            $set: { role: "Pro-user" },
+            $set: { role: "Pro-User" },
           }
         );
 
