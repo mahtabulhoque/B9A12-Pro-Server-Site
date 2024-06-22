@@ -13,6 +13,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173",
+      "http://localhost:5174",
       "https://b9a12-assignment-project.web.app",
       "https://b9a12-assignment-project.firebaseapp.com",
     ],
