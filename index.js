@@ -22,8 +22,6 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-
-
 // Mongodb
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.i8q8q4e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -360,34 +358,39 @@ async function run() {
       res.send(result);
     });
 
-    
     // filter survey
-    app.get("/surveys", async (req, res) => {
-      const filter = req.query.filter; 
-      const sort = req.query.sort;
-    
-      let query = {};
-      if (filter) {
-        query = { ...query, category: filter };
-      }
-      let options = {};
-      if (sort) {
-        options = { sort: { voteCount: sort === "asc" ? 1 : -1 } }; 
-      }
-    
+    app.get("/surveys-filter", async (req, res) => {
       try {
-        const result = await surveyCollection.find(query, options).toArray(); 
-        res.send(result); 
+        const category = req.query.category;
+        const sort = req.query.sort;
+    
+        const filter = {};
+    
+        if (category) {
+     
+          filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
+        }
+        const options = {};
+        if (sort) {
+            options.sort = { voteCount: sort === "asc" ? 1 : -1 };
+          }
+    
+        console.log({ filter });
+    
+        const products = await surveyCollection.find(filter,options).toArray();
+        if(products.length === 0){
+          console.log('no surveys found');
+        }
+        res.status(200).json(products);
+
       } catch (error) {
-        console.error("Error fetching surveys:", error);
-        res.status(500).json({ error: "Internal Server Error" });
+        console.log(error);
+        res.status(500).json({ error: 'Internal Server Error' });
       }
     });
-
+   
     app.post("/api/submit-survey", async (req, res) => {
       const surveyAnswers = req.body;
-      // Process and store the survey answers in the database if necessary
-      // For this example, we simply log them
       console.log("Received survey answers:", surveyAnswers);
       res.status(200).send("Survey submitted successfully");
     });
@@ -450,29 +453,19 @@ async function run() {
 
     // for vote survey
     app.post("/votes", async (req, res) => {
-      try {
-        const voteSurvey = req.body;
-        const voteId = voteSurvey.voteId;
+      const voteSurvey = req.body;
+      const voteId = voteSurvey.voteId;
+      const result = await votesCollection.insertOne(voteSurvey);
+      const updateDoc = {
+        $inc: { voteCount: 1 },
+      };
+      const voteQuery = { _id: new ObjectId(voteId) };
+      const updateVoteCount = await surveyCollection.updateOne(
+        voteQuery,
+        updateDoc
+      );
 
-        // Insert the vote into votesCollection
-        const result = await votesCollection.insertOne(voteSurvey);
-
-        // Update the voteCount in surveyCollection
-        const voteQuery = { _id: new ObjectId(voteId) };
-        const updateDoc = {
-          $inc: { voteCount: 1 },
-        };
-
-        await surveyCollection.updateOne(voteQuery, updateDoc);
-
-        // Fetch updated survey data if needed
-        const updatedSurvey = await surveyCollection.findOne(voteQuery);
-
-        res.status(200).json(updatedSurvey); // Respond with updated survey data
-      } catch (error) {
-        console.error("Error processing vote:", error);
-        res.status(500).send("Internal Server Error");
-      }
+      res.send(result);
     });
 
     // payment related API
@@ -497,7 +490,7 @@ async function run() {
     });
 
     // all payment & response
-    app.get("/payments",  async (req, res) => {
+    app.get("/payments", async (req, res) => {
       const result = await paymentCollection.find().toArray();
       res.send(result);
     });
@@ -507,7 +500,7 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/payments",  async (req, res) => {
+    app.post("/payments", async (req, res) => {
       const payment = req.body;
 
       try {
